@@ -1,17 +1,9 @@
-# bus_booking_app
+# Bus Booking App
 
-A new Flutter project.
+A Flutter app for booking seats on a bus. My data is now saved on the phone with shared_preferences, so nothing is lost when the app closes, and it shows live weather for the selected destination from the Open-Meteo API.
 
-## Getting Started
-
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
-# busApplication
+## Screenshots
+![Before closing](screenshots/before.png)
+![After running again](screenshots/after.png)
+![Live data from an API](screenshots/api.png)
+![No internet](screenshots/no-internet.png)
