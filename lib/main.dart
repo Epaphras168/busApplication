@@ -1,9 +1,18 @@
+import 'dart:async';
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'auth_gate.dart';
+import 'booking_data.dart';
+import 'firebase_options.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const MyApp());
 }
 
@@ -126,7 +135,7 @@ class MyApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const BusBookingScreen(),
+      home: const AuthGate(),
     );
   }
 }
@@ -134,22 +143,20 @@ class MyApp extends StatelessWidget {
 enum Screen { map, book, details, waitlist }
 
 class WaitlistPerson {
+  final String id;
   final String name;
   final bool priority;
   final String reason;
 
-  WaitlistPerson(this.name, this.priority, [this.reason = '']);
+  WaitlistPerson(this.id, this.name, this.priority, [this.reason = '']);
 
-  Map<String, dynamic> toJson() => {
-        'name': name,
-        'priority': priority,
-        'reason': reason,
-      };
-
-  factory WaitlistPerson.fromJson(Map<String, dynamic> json) => WaitlistPerson(
-        json['name'] as String,
-        json['priority'] as bool,
-        json['reason'] as String,
+  factory WaitlistPerson.fromDoc(
+          QueryDocumentSnapshot<Map<String, dynamic>> doc) =>
+      WaitlistPerson(
+        doc.id,
+        doc.data()['name'] as String,
+        doc.data()['priority'] as bool,
+        (doc.data()['reason'] as String?) ?? '',
       );
 }
 
@@ -181,48 +188,86 @@ class _BusBookingScreenState extends State<BusBookingScreen> {
   Weather? weather;
   bool weatherLoading = true;
   String? weatherError;
+  bool dataLoading = true;
+  String? dataError;
+
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _bookingsSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _waitlistSub;
 
   @override
   void initState() {
     super.initState();
-    seats[0] = 'Alice';
-    seats[1] = 'Bob';
-    seats[5] = 'Clara';
-    _loadData();
+    _loadDestination();
+    _listenToData();
+    _loadWeather();
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadDestination() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedSeats = prefs.getString('seats');
-    final savedWaitlist = prefs.getString('waitlist');
     final savedDestination = prefs.getString('destination');
-    setState(() {
-      if (savedSeats != null) {
-        seats = (jsonDecode(savedSeats) as List).cast<String?>();
-      }
-      if (savedWaitlist != null) {
-        waitlist = (jsonDecode(savedWaitlist) as List)
-            .map((e) => WaitlistPerson.fromJson(e as Map<String, dynamic>))
-            .toList();
-      }
-      if (savedDestination != null) {
+    if (savedDestination != null) {
+      setState(() {
         destination = destinations.firstWhere(
           (d) => d.name == savedDestination,
           orElse: () => destinations.first,
         );
-      }
-    });
-    _loadWeather();
+      });
+    }
   }
 
-  Future<void> _saveData() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('seats', jsonEncode(seats));
-    await prefs.setString(
-      'waitlist',
-      jsonEncode(waitlist.map((p) => p.toJson()).toList()),
-    );
+  void _listenToData() {
+    _bookingsSub = myBookings().snapshots().listen((snapshot) {
+      setState(() {
+        dataLoading = false;
+        dataError = null;
+        seats = List.filled(seatCount, null);
+        for (final doc in snapshot.docs) {
+          final index = int.tryParse(doc.id);
+          if (index != null && index >= 0 && index < seatCount) {
+            seats[index] = doc.data()['name'] as String;
+          }
+        }
+      });
+    }, onError: (e) {
+      setState(() {
+        dataLoading = false;
+        dataError = 'Could not load your bookings.\n$e';
+      });
+    });
+
+    _waitlistSub =
+        myWaitlist().orderBy('joinedAt').snapshots().listen((snapshot) {
+      final people = snapshot.docs.map(WaitlistPerson.fromDoc).toList();
+      final priority = people.where((p) => p.priority).toList();
+      final regular = people.where((p) => !p.priority).toList();
+      setState(() => waitlist = [...priority, ...regular]);
+    }, onError: (e) {
+      setState(() => dataError = 'Could not load the waitlist.\n$e');
+    });
   }
+
+  // Safe Sign-Out wrapper that intercepts Web-Interop crashes safely
+  Future<void> _handleSignOut() async {
+    try {
+      // Direct try-catch bypasses the breaking property lookup on web
+      await FirebaseAuth.instance.signOut();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Successfully logged out.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Sign out failed: Firebase is not configured or initialized for Web.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
 
   void chooseDestination(Destination d) async {
     setState(() {
@@ -261,6 +306,8 @@ class _BusBookingScreenState extends State<BusBookingScreen> {
 
   @override
   void dispose() {
+    _bookingsSub?.cancel();
+    _waitlistSub?.cancel();
     nameController.dispose();
     cashController.dispose();
     waitlistNameController.dispose();
@@ -345,8 +392,12 @@ class _BusBookingScreenState extends State<BusBookingScreen> {
     }
 
     final change = cash - price;
-    seats[selectedSeat!] = name;
-    _saveData();
+    myBookings().doc('$selectedSeat').set({
+      'seat': selectedSeat,
+      'name': name,
+      'cash': cash,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
 
     showDialog(
       context: context,
@@ -452,13 +503,19 @@ class _BusBookingScreenState extends State<BusBookingScreen> {
     );
   }
 
-  void _performCancel() {
+  Future<void> _performCancel() async {
     final index = selectedSeat!;
-    seats[index] = null;
     String msg = '';
+    await myBookings().doc('$index').delete();
     if (waitlist.isNotEmpty) {
-      final person = waitlist.removeAt(0);
-      seats[index] = person.name;
+      final person = waitlist.first;
+      await myBookings().doc('$index').set({
+        'seat': index,
+        'name': person.name,
+        'cash': price,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      await myWaitlist().doc(person.id).delete();
       msg = '${person.name} moved into seat ${index + 1}.';
     }
     setState(() {
@@ -466,7 +523,6 @@ class _BusBookingScreenState extends State<BusBookingScreen> {
       currentScreen = Screen.map;
       selectedSeat = null;
     });
-    _saveData();
   }
 
   void joinWaitlist() {
@@ -482,17 +538,12 @@ class _BusBookingScreenState extends State<BusBookingScreen> {
       return;
     }
 
-    final person = WaitlistPerson(name, waitlistPriority, waitlistPriority ? reason : '');
-
-    if (person.priority) {
-      int i = 0;
-      while (i < waitlist.length && waitlist[i].priority) {
-        i++;
-      }
-      waitlist.insert(i, person);
-    } else {
-      waitlist.add(person);
-    }
+    myWaitlist().add({
+      'name': name,
+      'priority': waitlistPriority,
+      'reason': waitlistPriority ? reason : '',
+      'joinedAt': FieldValue.serverTimestamp(),
+    });
 
     setState(() {
       waitlistNameController.clear();
@@ -500,7 +551,6 @@ class _BusBookingScreenState extends State<BusBookingScreen> {
       waitlistPriority = false;
       waitlistError = '';
     });
-    _saveData();
   }
 
   @override
@@ -521,9 +571,31 @@ class _BusBookingScreenState extends State<BusBookingScreen> {
             Text('${destination.name} Express', style: const TextStyle(fontWeight: FontWeight.w800)),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'Log Out',
+            onPressed: _handleSignOut,
+          ),
+        ],
       ),
-      body: SafeArea(child: _buildBody()),
+      body: SafeArea(child: _buildRoot()),
     );
+  }
+
+  Widget _buildRoot() {
+    if (dataLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (dataError != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(dataError!, textAlign: TextAlign.center),
+        ),
+      );
+    }
+    return _buildBody();
   }
 
   Widget _buildBody() {

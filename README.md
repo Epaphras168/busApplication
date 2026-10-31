@@ -1,17 +1,12 @@
 # Bus Booking App
 
-A Flutter app for booking seats on a bus. My data is now saved on the phone with shared_preferences, so nothing is lost when the app closes, and it shows live weather for the selected destination from the Open-Meteo API.
+A Flutter app for booking seats on a bus. It signs users in with Firebase Authentication, and each
+user's data is saved in Cloud Firestore under their own id, so two accounts never see
+each other's data, and every change appears live.
 
 ## Screenshots
 
-**Before closing**
-![Before closing](screenshots/before.png)
-
-**After running again**
-![After running again](screenshots/after.png)
-
-**Live data from an API**
-![Live data from an API](screenshots/api.png)
-
-**No internet**
-![No internet](screenshots/no-internet.png)
+![Login](screenshots/login.png)
+![My data in Firestore](screenshots/console.png)
+![Live update](screenshots/live.png)
+![Second account sees nothing of mine](screenshots/denied.png)
