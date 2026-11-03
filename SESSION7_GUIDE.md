@@ -42,8 +42,8 @@ Create `lib/models/`, `lib/repositories/`, `lib/state/`, `lib/screens/`.
 Move these two files into `screens/` (use your editor's "move/refactor", not drag-in-Finder,
 so imports update automatically):
 
-- `lib/auth_gate.dart` → `lib/screens/auth_gate.dart`
-- `lib/login_screen.dart` → `lib/screens/login_screen.dart`
+- `lib/screens/auth_gate.dart` → `lib/screens/auth_gate.dart`
+- `lib/screens/login_screen.dart` → `lib/screens/login_screen.dart`
 
 Run the app. Nothing should look different yet — you've only moved two files, and
 `main.dart` now imports `screens/auth_gate.dart`.

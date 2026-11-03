@@ -1,7 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import 'booking_data.dart';
+import '../repositories/bus_repository.dart';
 
 
 class LoginScreen extends StatefulWidget {
@@ -27,9 +27,9 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final auth = FirebaseAuth.instance;
       if (newAccount) {
-        await auth.createUserWithEmailAndPassword(
+        final credential = await auth.createUserWithEmailAndPassword(
             email: _email.text.trim(), password: _password.text);
-        await addSampleBookings();
+        await BusRepository(credential.user!.uid).addSamples();
       } else {
         await auth.signInWithEmailAndPassword(
             email: _email.text.trim(), password: _password.text);
