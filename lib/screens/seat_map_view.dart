@@ -35,6 +35,8 @@ class SeatMapView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visibleSeats = state.visibleSeatIndexes;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
       child: Column(
@@ -86,7 +88,6 @@ class SeatMapView extends StatelessWidget {
           _buildWeatherCard(),
           const SizedBox(height: 16),
 
-          // Stat strip
           Row(
             children: [
               Expanded(
@@ -131,7 +132,30 @@ class SeatMapView extends StatelessWidget {
 
           const SizedBox(height: 18),
 
-          // Legend
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ChoiceChip(
+                label: const Text('All'),
+                selected: state.seatFilter == SeatFilter.all,
+                onSelected: (_) => state.setSeatFilter(SeatFilter.all),
+              ),
+              ChoiceChip(
+                label: const Text('Free'),
+                selected: state.seatFilter == SeatFilter.free,
+                onSelected: (_) => state.setSeatFilter(SeatFilter.free),
+              ),
+              ChoiceChip(
+                label: const Text('Taken'),
+                selected: state.seatFilter == SeatFilter.taken,
+                onSelected: (_) => state.setSeatFilter(SeatFilter.taken),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 10),
+
           Row(
             children: [
               _legendDot(AppColors.free, 'Free'),
@@ -155,43 +179,49 @@ class SeatMapView extends StatelessWidget {
                   BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 16, offset: const Offset(0, 6)),
                 ],
               ),
-              child: GridView.count(
-                crossAxisCount: 3,
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: 1.05,
-                children: List.generate(BusState.seatCount, (i) {
-                  final name = state.nameAt(i);
-                  final taken = name != null;
-                  final color = taken ? AppColors.taken : AppColors.free;
-                  return InkWell(
-                    onTap: () => onOpenSeat(i),
-                    borderRadius: BorderRadius.circular(14),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: color.withOpacity(0.10),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: color.withOpacity(0.35)),
+              child: visibleSeats.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No seats match this filter.',
+                        style: TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w600),
                       ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.event_seat_rounded, color: color, size: 22),
-                          const SizedBox(height: 2),
-                          Text('${i + 1}',
-                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: color)),
-                          Text(
-                            taken ? name : 'Free',
-                            style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
+                    )
+                  : GridView.count(
+                      crossAxisCount: 3,
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      childAspectRatio: 1.05,
+                      children: visibleSeats.map((i) {
+                        final name = state.nameAt(i);
+                        final taken = name != null;
+                        final color = taken ? AppColors.taken : AppColors.free;
+                        return InkWell(
+                          onTap: () => onOpenSeat(i),
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: color.withOpacity(0.10),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: color.withOpacity(0.35)),
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.event_seat_rounded, color: color, size: 22),
+                                const SizedBox(height: 2),
+                                Text('${i + 1}', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: color)),
+                                Text(
+                                  taken ? name : 'Free',
+                                  style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                ),
+                              ],
+                            ),
                           ),
-                        ],
-                      ),
+                        );
+                      }).toList(),
                     ),
-                  );
-                }),
-              ),
             ),
           ),
           const SizedBox(height: 14),
