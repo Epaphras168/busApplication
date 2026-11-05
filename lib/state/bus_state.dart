@@ -6,10 +6,13 @@ import '../models/booking.dart';
 import '../models/waitlist_person.dart';
 import '../repositories/bus_repository.dart';
 
+enum SeatFilter { all, free, taken }
+enum WaitlistFilter { all, priorityOnly, regularOnly }
+
 class BusState extends ChangeNotifier {
   BusState(this._repo) {
     _bookingsSub = _repo.watchBookings().listen(
-          (map) {
+      (map) {
         _bookingsBySeat = map;
         _loading = false;
         _error = null;
@@ -48,44 +51,54 @@ class BusState extends ChangeNotifier {
   String? nameAt(int seat) => _bookingsBySeat[seat];
   List<String> get bookedNames => _bookingsBySeat.values.toList();
 
-  // Computed — never stored (Habit 2).
+  // Computed values.
   int get seatsSold => _bookingsBySeat.length;
   int get seatsLeft => seatCount - seatsSold;
   int get moneyMade => seatsSold * price;
   bool get isFull => seatsSold == seatCount;
 
-  // The filter: who sees it? Several screens could, so it lives here, not
-  // in one screen's setState.
-  bool _priorityOnly = false;
-  bool get priorityOnly => _priorityOnly;
+  // Seat selector filter: All / Free / Taken.
+  SeatFilter _seatFilter = SeatFilter.all;
+  SeatFilter get seatFilter => _seatFilter;
 
-
-  WaitlistFilter _currentFilter = WaitlistFilter.all;
-  WaitlistFilter get currentFilter => _currentFilter;
-
-  // 2. Modifier to change filter via Buttons / Segmented Selectors
-  void updateFilter(WaitlistFilter filter) {
-    _currentFilter = filter;
+  void setSeatFilter(SeatFilter value) {
+    if (_seatFilter == value) return;
+    _seatFilter = value;
     notifyListeners();
   }
 
+  List<int> get visibleSeatIndexes => [
+        for (var seat = 0; seat < seatCount; seat++)
+          if (_seatFilter == SeatFilter.all ||
+              (_seatFilter == SeatFilter.free && nameAt(seat) == null) ||
+              (_seatFilter == SeatFilter.taken && nameAt(seat) != null))
+            seat,
+      ];
 
+  // Waitlist selector filter: All / Priority / Regular.
+  WaitlistFilter _waitlistFilter = WaitlistFilter.all;
+  WaitlistFilter get waitlistFilter => _waitlistFilter;
+
+  // Kept for any existing callers of the previous priority-only switch.
+  bool get priorityOnly => _waitlistFilter == WaitlistFilter.priorityOnly;
+
+  void setWaitlistFilter(WaitlistFilter value) {
+    if (_waitlistFilter == value) return;
+    _waitlistFilter = value;
+    notifyListeners();
+  }
 
   void setPriorityOnly(bool value) {
-    _priorityOnly = value;
-    notifyListeners();
+    setWaitlistFilter(value ? WaitlistFilter.priorityOnly : WaitlistFilter.all);
   }
 
-  // Computed from _waitlist and _priorityOnly — never stored separately.
-  // 3. Computed Filtered List based on the active selection
   List<WaitlistPerson> get visibleWaitlist {
-    switch (_currentFilter) {
+    switch (_waitlistFilter) {
       case WaitlistFilter.priorityOnly:
         return _waitlist.where((p) => p.priority).toList();
       case WaitlistFilter.regularOnly:
         return _waitlist.where((p) => !p.priority).toList();
       case WaitlistFilter.all:
-      default:
         return _waitlist;
     }
   }
@@ -96,6 +109,7 @@ class BusState extends ChangeNotifier {
 
   Future<void> cancelSeat(int seat) async {
     await _repo.cancelSeat(seat);
+    // Use the full waitlist, not the filtered display list, for promotion.
     if (_waitlist.isNotEmpty) {
       final person = _waitlist.first;
       await _repo.bookSeat(seat, Booking(seat: seat, name: person.name, cash: price));
