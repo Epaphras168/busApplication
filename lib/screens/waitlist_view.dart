@@ -28,11 +28,10 @@ class WaitlistView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // The filter lives in the brain: several screens could read it, and the
-    // visible list is computed fresh from the full waitlist + the choice.
     final state = context.watch<BusState>();
     final fullWaitlist = state.waitlist;
     final waitlist = state.visibleWaitlist;
+
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -49,18 +48,31 @@ class WaitlistView extends StatelessWidget {
               const Text('Waitlist', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
             ],
           ),
-          if (fullWaitlist.any((p) => p.priority)) ...[
-            const SizedBox(height: 12),
-            SwitchListTile(
-              title: const Text('Priority only', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-              value: state.priorityOnly,
-              activeColor: AppColors.primary,
-              onChanged: (v) => context.read<BusState>().setPriorityOnly(v),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
+          const SizedBox(height: 12),
+          if (fullWaitlist.isNotEmpty) ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ChoiceChip(
+                  label: const Text('All'),
+                  selected: state.waitlistFilter == WaitlistFilter.all,
+                  onSelected: (_) => context.read<BusState>().setWaitlistFilter(WaitlistFilter.all),
+                ),
+                ChoiceChip(
+                  label: const Text('Priority'),
+                  selected: state.waitlistFilter == WaitlistFilter.priorityOnly,
+                  onSelected: (_) => context.read<BusState>().setWaitlistFilter(WaitlistFilter.priorityOnly),
+                ),
+                ChoiceChip(
+                  label: const Text('Regular'),
+                  selected: state.waitlistFilter == WaitlistFilter.regularOnly,
+                  onSelected: (_) => context.read<BusState>().setWaitlistFilter(WaitlistFilter.regularOnly),
+                ),
+              ],
             ),
+            const SizedBox(height: 12),
           ],
-          const SizedBox(height: 4),
           Expanded(
             child: fullWaitlist.isEmpty
                 ? Center(
@@ -76,64 +88,64 @@ class WaitlistView extends StatelessWidget {
                 : waitlist.isEmpty
                     ? const Center(child: Text('Nobody matches this filter.', style: TextStyle(color: AppColors.textMuted)))
                     : ListView.separated(
-                    itemCount: waitlist.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (ctx, i) {
-                      final p = waitlist[i];
-                      return Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: AppColors.card,
-                          borderRadius: BorderRadius.circular(14),
-                          boxShadow: [
-                            BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4)),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 32,
-                              height: 32,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withOpacity(0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Text('${i + 1}',
-                                  style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.primary, fontSize: 13)),
+                        itemCount: waitlist.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (ctx, i) {
+                          final p = waitlist[i];
+                          return Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: AppColors.card,
+                              borderRadius: BorderRadius.circular(14),
+                              boxShadow: [
+                                BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4)),
+                              ],
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(p.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                                  if (p.priority && p.reason.isNotEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 2),
-                                      child: Text('Reason: ${p.reason}',
-                                          style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 32,
+                                  height: 32,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withOpacity(0.1),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Text('${i + 1}',
+                                      style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.primary, fontSize: 13)),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(p.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                                      if (p.priority && p.reason.isNotEmpty)
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 2),
+                                          child: Text('Reason: ${p.reason}',
+                                              style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                if (p.priority)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.accent.withOpacity(0.12),
+                                      borderRadius: BorderRadius.circular(20),
                                     ),
-                                ],
-                              ),
+                                    child: const Text(
+                                      'Priority',
+                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.accent),
+                                    ),
+                                  ),
+                              ],
                             ),
-                            if (p.priority)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                decoration: BoxDecoration(
-                                  color: AppColors.accent.withOpacity(0.12),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: const Text(
-                                  'Priority',
-                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.accent),
-                                ),
-                              ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
+                          );
+                        },
+                      ),
           ),
           if (isFull) ...[
             const SizedBox(height: 14),
