@@ -16,4 +16,8 @@ class WaitlistPerson {
         doc.data()['priority'] as bool,
         (doc.data()['reason'] as String?) ?? '',
       );
+
+
 }
+
+enum WaitlistFilter { all, priorityOnly, regularOnly }

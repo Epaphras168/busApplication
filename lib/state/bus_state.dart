@@ -59,14 +59,36 @@ class BusState extends ChangeNotifier {
   bool _priorityOnly = false;
   bool get priorityOnly => _priorityOnly;
 
+
+  WaitlistFilter _currentFilter = WaitlistFilter.all;
+  WaitlistFilter get currentFilter => _currentFilter;
+
+  // 2. Modifier to change filter via Buttons / Segmented Selectors
+  void updateFilter(WaitlistFilter filter) {
+    _currentFilter = filter;
+    notifyListeners();
+  }
+
+
+
   void setPriorityOnly(bool value) {
     _priorityOnly = value;
     notifyListeners();
   }
 
   // Computed from _waitlist and _priorityOnly — never stored separately.
-  List<WaitlistPerson> get visibleWaitlist =>
-      _priorityOnly ? _waitlist.where((p) => p.priority).toList() : _waitlist;
+  // 3. Computed Filtered List based on the active selection
+  List<WaitlistPerson> get visibleWaitlist {
+    switch (_currentFilter) {
+      case WaitlistFilter.priorityOnly:
+        return _waitlist.where((p) => p.priority).toList();
+      case WaitlistFilter.regularOnly:
+        return _waitlist.where((p) => !p.priority).toList();
+      case WaitlistFilter.all:
+      default:
+        return _waitlist;
+    }
+  }
 
   // Actions: the brain hands the job to the repository.
   Future<void> bookSeat(int seat, String name, int cash) =>
