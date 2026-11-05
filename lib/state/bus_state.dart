@@ -1,115 +1,229 @@
-import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
-import 'package:flutter/foundation.dart';
+import '../main.dart';
+import '../state/bus_state.dart';
 
-import '../models/booking.dart';
-import '../models/waitlist_person.dart';
-import '../repositories/bus_repository.dart';
+class WaitlistView extends StatelessWidget {
+  const WaitlistView({
+    super.key,
+    required this.isFull,
+    required this.waitlistNameController,
+    required this.reasonController,
+    required this.waitlistPriority,
+    required this.onPriorityChanged,
+    required this.waitlistError,
+    required this.onJoin,
+    required this.onBack,
+  });
 
-class BusState extends ChangeNotifier {
-  BusState(this._repo) {
-    _bookingsSub = _repo.watchBookings().listen(
-          (map) {
-        _bookingsBySeat = map;
-        _loading = false;
-        _error = null;
-        notifyListeners();
-      },
-      onError: (Object e) {
-        _loading = false;
-        _error = 'Could not load your bookings.';
-        notifyListeners();
-      },
-    );
-    _waitlistSub = _repo.watchWaitlist().listen((list) {
-      final priority = list.where((p) => p.priority).toList();
-      final regular = list.where((p) => !p.priority).toList();
-      _waitlist = [...priority, ...regular];
-      notifyListeners();
-    });
-  }
-
-  final BusRepository _repo;
-  StreamSubscription<Map<int, String>>? _bookingsSub;
-  StreamSubscription<List<WaitlistPerson>>? _waitlistSub;
-
-  static const int seatCount = 12;
-  static const int price = 3000;
-
-  Map<int, String> _bookingsBySeat = {};
-  List<WaitlistPerson> _waitlist = [];
-  bool _loading = true;
-  String? _error;
-
-  // Read-only views.
-  bool get loading => _loading;
-  String? get error => _error;
-  List<WaitlistPerson> get waitlist => _waitlist;
-  String? nameAt(int seat) => _bookingsBySeat[seat];
-  List<String> get bookedNames => _bookingsBySeat.values.toList();
-
-  // Computed — never stored (Habit 2).
-  int get seatsSold => _bookingsBySeat.length;
-  int get seatsLeft => seatCount - seatsSold;
-  int get moneyMade => seatsSold * price;
-  bool get isFull => seatsSold == seatCount;
-
-  // The filter: who sees it? Several screens could, so it lives here, not
-  // in one screen's setState.
-  bool _priorityOnly = false;
-  bool get priorityOnly => _priorityOnly;
-
-
-  WaitlistFilter _currentFilter = WaitlistFilter.all;
-  WaitlistFilter get currentFilter => _currentFilter;
-
-  // 2. Modifier to change filter via Buttons / Segmented Selectors
-  void updateFilter(WaitlistFilter filter) {
-    _currentFilter = filter;
-    notifyListeners();
-  }
-
-
-
-  void setPriorityOnly(bool value) {
-    _priorityOnly = value;
-    notifyListeners();
-  }
-
-  // Computed from _waitlist and _priorityOnly — never stored separately.
-  // 3. Computed Filtered List based on the active selection
-  List<WaitlistPerson> get visibleWaitlist {
-    switch (_currentFilter) {
-      case WaitlistFilter.priorityOnly:
-        return _waitlist.where((p) => p.priority).toList();
-      case WaitlistFilter.regularOnly:
-        return _waitlist.where((p) => !p.priority).toList();
-      case WaitlistFilter.all:
-      default:
-        return _waitlist;
-    }
-  }
-
-  // Actions: the brain hands the job to the repository.
-  Future<void> bookSeat(int seat, String name, int cash) =>
-      _repo.bookSeat(seat, Booking(seat: seat, name: name, cash: cash));
-
-  Future<void> cancelSeat(int seat) async {
-    await _repo.cancelSeat(seat);
-    if (_waitlist.isNotEmpty) {
-      final person = _waitlist.first;
-      await _repo.bookSeat(seat, Booking(seat: seat, name: person.name, cash: price));
-      await _repo.leaveWaitlist(person.id);
-    }
-  }
-
-  Future<void> joinWaitlist(String name, bool priority, String reason) =>
-      _repo.joinWaitlist(name, priority, reason);
+  final bool isFull;
+  final TextEditingController waitlistNameController;
+  final TextEditingController reasonController;
+  final bool waitlistPriority;
+  final ValueChanged<bool> onPriorityChanged;
+  final String waitlistError;
+  final VoidCallback onJoin;
+  final VoidCallback onBack;
 
   @override
-  void dispose() {
-    _bookingsSub?.cancel();
-    _waitlistSub?.cancel();
-    super.dispose();
+  Widget build(BuildContext context) {
+    final state = context.watch<BusState>();
+    final fullWaitlist = state.waitlist;
+    final waitlist = state.visibleWaitlist;
+
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              IconButton(
+                onPressed: onBack,
+                icon: const Icon(Icons.arrow_back_rounded),
+                style: IconButton.styleFrom(backgroundColor: Colors.white, shape: const CircleBorder()),
+              ),
+              const SizedBox(width: 10),
+              const Text('Waitlist', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (fullWaitlist.isNotEmpty) ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ChoiceChip(
+                  label: const Text('All'),
+                  selected: state.waitlistFilter == WaitlistFilter.all,
+                  onSelected: (_) => context.read<BusState>().setWaitlistFilter(WaitlistFilter.all),
+                ),
+                ChoiceChip(
+                  label: const Text('Priority'),
+                  selected: state.waitlistFilter == WaitlistFilter.priorityOnly,
+                  onSelected: (_) => context.read<BusState>().setWaitlistFilter(WaitlistFilter.priorityOnly),
+                ),
+                ChoiceChip(
+                  label: const Text('Regular'),
+                  selected: state.waitlistFilter == WaitlistFilter.regularOnly,
+                  onSelected: (_) => context.read<BusState>().setWaitlistFilter(WaitlistFilter.regularOnly),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
+          Expanded(
+            child: fullWaitlist.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.event_available_rounded, size: 48, color: Colors.grey.shade300),
+                        const SizedBox(height: 10),
+                        const Text('Nobody is waiting.', style: TextStyle(color: AppColors.textMuted)),
+                      ],
+                    ),
+                  )
+                : waitlist.isEmpty
+                    ? const Center(child: Text('Nobody matches this filter.', style: TextStyle(color: AppColors.textMuted)))
+                    : ListView.separated(
+                        itemCount: waitlist.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (ctx, i) {
+                          final p = waitlist[i];
+                          return Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: AppColors.card,
+                              borderRadius: BorderRadius.circular(14),
+                              boxShadow: [
+                                BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4)),
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 32,
+                                  height: 32,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withOpacity(0.1),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Text('${i + 1}',
+                                      style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.primary, fontSize: 13)),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(p.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                                      if (p.priority && p.reason.isNotEmpty)
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 2),
+                                          child: Text('Reason: ${p.reason}',
+                                              style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                if (p.priority)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.accent.withOpacity(0.12),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: const Text(
+                                      'Priority',
+                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.accent),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+          ),
+          if (isFull) ...[
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.card,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4)),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('Add to waitlist', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: waitlistNameController,
+                    decoration: const InputDecoration(hintText: 'Passenger name'),
+                  ),
+                  const SizedBox(height: 4),
+                  SwitchListTile(
+                    title: const Text('Priority (elderly, pregnant, disabled)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                    value: waitlistPriority,
+                    activeColor: AppColors.primary,
+                    onChanged: onPriorityChanged,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  if (waitlistPriority) ...[
+                    const SizedBox(height: 4),
+                    TextField(
+                      controller: reasonController,
+                      decoration: const InputDecoration(
+                        hintText: 'e.g. elderly, pregnant, disabled',
+                      ),
+                    ),
+                  ],
+                  if (waitlistError.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        const Icon(Icons.error_outline_rounded, size: 16, color: AppColors.taken),
+                        const SizedBox(width: 6),
+                        Expanded(child: Text(waitlistError, style: const TextStyle(color: AppColors.taken, fontSize: 13, fontWeight: FontWeight.w600))),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  ElevatedButton(
+                    onPressed: onJoin,
+                    child: const Text('Join waitlist'),
+                  ),
+                ],
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'The bus is not full yet, so nobody can join the waitlist.',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          OutlinedButton(
+            onPressed: onBack,
+            child: const Text('Back to seat map'),
+          ),
+        ],
+      ),
+    );
   }
 }
+"}]} ivoq to=functions.push_files  ARGS  { 
